@@ -8,152 +8,113 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from google import genai
 from google.genai import types
+from PIL import Image
+from io import BytesIO
 
 load_dotenv()
 
-# ================== API SOZLAMALARI ==================
+# ================== SOZLAMALAR ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-REPLICATE_API_KEY = os.getenv("REPLICATE_API_KEY")
 
-# Gemini sozlamalari
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-TEXT_MODEL = "gemini-2.0-flash"   # Ishlaydigan model
 
-# ================== 1. GEMINI - MATN YARATISH ==================
+# Gemini modellari
+TEXT_MODEL = "gemini-2.0-flash"
+IMAGE_MODEL = "imagen-4.0-generate-001"   # Eng yaxshi sifat
+
+# ================== GEMINI - MATN + RASM ==================
 def generate_slide_content(topic, slide_num, total_slides):
     prompt = f"""
-    {topic} mavzusida {total_slides} slaydlik professional PowerPoint taqdimoti tayyorla.
-    {slide_num}-slayd uchun quyidagi formatda javob ber:
+    {topic} mavzusida {total_slides} slaydlik professional PowerPoint taqdimoti.
+    {slide_num}-slayd uchun:
 
-    TITLE: Qisqa, kuchli va jozibali sarlavha
+    TITLE: Qisqa va kuchli sarlavha (8-12 so'z)
     POINTS: nuqta1 | nuqta2 | nuqta3 | nuqta4
-    IMAGE_PROMPT: Ingliz tilida professional, chiroyli rasm prompti (FLUX uchun)
+    IMAGE_PROMPT: Ushbu slayd uchun ingliz tilida batafsil, chiroyli rasm prompti
 
-    Javobni faqat shu 3 qatorda ber, boshqa matn qo'shma.
+    Faqat shu formatda javob ber.
     """
 
     try:
         response = gemini_client.models.generate_content(
             model=TEXT_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.75,
-                max_output_tokens=700
-            )
+            config=types.GenerateContentConfig(temperature=0.7, max_output_tokens=800)
         )
         return response.text.strip()
     except Exception as e:
-        print(f"Gemini xatosi: {e}")
-        return f"""TITLE: {topic} - Slayd {slide_num}
-POINTS: Muhim ma'lumotlar | Asosiy faktlar | Afzalliklar | Natijalar
-IMAGE_PROMPT: professional presentation slide about {topic}"""
+        print(f"Matn xatosi: {e}")
+        return f"TITLE: {topic} - Slayd {slide_num}\nPOINTS: Asosiy ma'lumot | Muhim fakt | Afzallik | Natija\nIMAGE_PROMPT: professional modern presentation slide about {topic}"
 
 
-def extract_title(content):
+def extract_title(content): 
     for line in content.splitlines():
-        if line.startswith('TITLE:'):
-            return line.replace('TITLE:', '').strip()
-    return f"Slayd {slide_num}"
-
+        if "TITLE:" in line: return line.split("TITLE:", 1)[1].strip()
+    return "Sarlavha"
 
 def extract_points(content):
     for line in content.splitlines():
-        if line.startswith('POINTS:'):
-            points = line.replace('POINTS:', '').strip()
-            points_list = [p.strip() for p in points.split('|') if p.strip()]
-            return '\n\n'.join([f"▸ {p}" for p in points_list])
-    return "▸ Ma'lumotlar\n▸ Muhim jihatlar"
-
+        if "POINTS:" in line:
+            pts = [p.strip() for p in line.split("POINTS:", 1)[1].strip().split("|")]
+            return "\n\n".join([f"▸ {p}" for p in pts if p])
+    return "▸ Ma'lumotlar"
 
 def extract_image_prompt(content):
     for line in content.splitlines():
-        if line.startswith('IMAGE_PROMPT:'):
-            return line.replace('IMAGE_PROMPT:', '').strip()
+        if "IMAGE_PROMPT:" in line:
+            return line.split("IMAGE_PROMPT:", 1)[1].strip()
     return f"professional business presentation about {topic}"
 
 
-# ================== 2. REPLICATE - RASM YARATISH ==================
-async def generate_image_replicate(prompt: str):   # ← async qo'shildi
-    if not REPLICATE_API_KEY:
-        print("⚠️ REPLICATE_API_KEY yo'q")
-        return None
-
-    headers = {
-        "Authorization": f"Token {REPLICATE_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "input": {
-            "prompt": prompt + ", high quality, clean, professional, presentation style",
-            "width": 1024,
-            "height": 768,
-            "num_outputs": 1,
-            "go_fast": True
-        }
-    }
-
+# ================== GEMINI IMAGE GENERATION ==================
+async def generate_image_gemini(prompt: str):
     try:
-        print(f"   🖼 Rasm yaratilmoqda: {prompt[:70]}...")
+        print(f"   🎨 Gemini Image yaratilmoqda...")
 
-        response = requests.post(
-            "https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions",
-            headers=headers,
-            json=payload,
-            timeout=60
+        response = gemini_client.models.generate_images(
+            model=IMAGE_MODEL,
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+            )
         )
 
-        if response.status_code != 201:
-            print(f"   ❌ Replicate error: {response.status_code}")
-            return None
-
-        prediction = response.json()
-        get_url = prediction["urls"]["get"]
-
-        for _ in range(35):
-            status_resp = requests.get(get_url, headers=headers, timeout=30)
-            data = status_resp.json()
-            status = data.get("status")
-
-            if status == "succeeded":
-                print("   ✅ Rasm tayyor!")
-                return data["output"][0]
-            elif status == "failed":
-                print(f"   ❌ FLUX failed: {data.get('error')}")
-                return None
-
-            await asyncio.sleep(1.8)   # Endi xato bermaydi
-
-        return None
+        if response.generated_images:
+            img = response.generated_images[0].image
+            img_bytes = BytesIO()
+            img.save(img_bytes, format="PNG")
+            img_bytes.seek(0)
+            print("   ✅ Gemini rasmi tayyor!")
+            return img_bytes
     except Exception as e:
-        print(f"   ❌ Replicate xatosi: {e}")
-        return None
-# ================== 3. POWERPOINT YARATISH ==================
-async def create_presentation(topic, num_slides=5):
-    print(f"🎯 '{topic}' uchun {num_slides} slayd tayyorlanmoqda...")
+        print(f"Gemini Image xatosi: {e}")
+    return None
 
+
+# ================== PPTX YARATISH ==================
+async def create_presentation(topic, num_slides=10):
+    print(f"🚀 {topic} — {num_slides} slayd boshlandi...")
     prs = Presentation()
 
-    # 1. Bosh sahifa
+    # Bosh sahifa
     slide = prs.slides.add_slide(prs.slide_layouts[0])
     slide.shapes.title.text = topic.upper()
 
-    # Asosiy slaydlar
     for i in range(1, num_slides + 1):
-        print(f"   Slayd {i}/{num_slides} ...")
+        print(f"   Slayd {i}/{num_slides}")
 
         content = generate_slide_content(topic, i, num_slides)
         title = extract_title(content)
         points = extract_points(content)
         image_prompt = extract_image_prompt(content)
 
-        slide = prs.slides.add_slide(prs.slide_layouts[5])  # Title and Content layout
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
 
         # Sarlavha
         if slide.shapes.title:
             slide.shapes.title.text = title
-            slide.shapes.title.text_frame.paragraphs[0].font.size = Pt(32)
+            slide.shapes.title.text_frame.paragraphs[0].font.size = Pt(34)
             slide.shapes.title.text_frame.paragraphs[0].font.bold = True
 
         # Matn
@@ -162,95 +123,72 @@ async def create_presentation(topic, num_slides=5):
                 shape.text = points
                 break
 
-        # Rasm qo'shish
-        img_url = generate_image_replicate(image_prompt)
-        if img_url and download_image(img_url, f"temp_slide_{i}.jpg"):
+        # Rasm (Gemini)
+        img_bytes = await generate_image_gemini(image_prompt + ", high quality, clean, professional, modern style")
+        if img_bytes:
             try:
-                slide.shapes.add_picture(f"temp_slide_{i}.jpg", 
-                                       Inches(6.2), Inches(1.5), 
-                                       width=Inches(4.8), height=Inches(4.0))
-                print(f"   ✅ Rasm qo'shildi")
+                slide.shapes.add_picture(img_bytes, Inches(6.0), Inches(1.5), 
+                                       width=Inches(5.0), height=Inches(4.2))
+                print("   ✅ Rasm qo'shildi")
             except Exception as e:
-                print(f"   Rasm qo'shishda xato: {e}")
-            finally:
-                if os.path.exists(f"temp_slide_{i}.jpg"):
-                    os.remove(f"temp_slide_{i}.jpg")
+                print(f"   Rasm qo'shish xatosi: {e}")
 
-        await asyncio.sleep(7)  # Replicate rate limit uchun (muhim!)
+        await asyncio.sleep(6)  # Rate limit himoyasi
 
     # Xulosa slaydi
     slide = prs.slides.add_slide(prs.slide_layouts[1])
-    slide.shapes.title.text = "XULOSA"
-    if len(slide.placeholders) > 1:
-        slide.placeholders[1].text = f"{topic} bo'yicha asosiy xulosalar va tavsiyalar."
+    slide.shapes.title.text = "XULOSA VA TAVSIYALAR"
 
-    filename = f"{topic.replace(' ', '_')[:40]}.pptx"
+    filename = f"{topic.replace(' ', '_')[:50]}.pptx"
     prs.save(filename)
-    print(f"✅ Taqdimot saqlandi: {filename}")
     return filename
 
 
-# ================== TELEGRAM BOT ==================
+# ================== BOT HANDLERS ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🎨 **AI Slayd Generatori**\n\n"
-        "Mavzuni yozing, men Gemini + FLUX bilan chiroyli taqdimot tayyorlayman!",
-        parse_mode="Markdown"
-    )
-
+    await update.message.reply_text("🎨 **Gemini AI Slayd Bot**\n\nMavzuni yozing:", parse_mode="Markdown")
 
 async def handle_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = update.message.text.strip()
     context.user_data['topic'] = topic
-
+    
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("5 slayd", callback_data="3"),
-         InlineKeyboardButton("10 slayd", callback_data="5")],
-        [InlineKeyboardButton("15 slayd", callback_data="7"),
-         InlineKeyboardButton("20 slayd", callback_data="10")]
+        [InlineKeyboardButton("5 slayd", callback_data="5"), InlineKeyboardButton("10 slayd", callback_data="10")],
+        [InlineKeyboardButton("15 slayd", callback_data="15"), InlineKeyboardButton("20 slayd", callback_data="20")]
     ])
-
-    await update.message.reply_text(
-        f"✅ **Mavzu:** {topic}\n\nQancha slayd kerak?", 
-        reply_markup=keyboard
-    )
-
+    
+    await update.message.reply_text(f"✅ Mavzu: **{topic}**\n\nQancha slayd kerak?", reply_markup=keyboard)
 
 async def handle_slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
+    
     num_slides = int(query.data)
     topic = context.user_data.get('topic', 'Taqdimot')
 
-    await query.edit_message_text(f"⏳ **{topic}** — {num_slides} slayd tayyorlanmoqda...\nAI ishlamoqda...")
+    await query.edit_message_text(f"⏳ {topic} — {num_slides} slayd tayyorlanmoqda...\nBu biroz vaqt oladi.")
 
     try:
         filename = await create_presentation(topic, num_slides)
-
+        
         with open(filename, 'rb') as f:
             await query.message.reply_document(
                 document=f,
                 filename=filename,
-                caption=f"✅ **Tayyor!**\n\n📌 {topic}\n📊 {num_slides} slayd\n🎨 AI rasmlar bilan"
+                caption=f"✅ **Tayyor!**\n📌 {topic}\n📊 {num_slides} slayd\n🎨 Gemini Image bilan"
             )
         os.remove(filename)
     except Exception as e:
-        print(f"Xatolik: {e}")
-        await query.edit_message_text(f"❌ Xatolik yuz berdi: {str(e)[:200]}")
-
+        await query.edit_message_text(f"❌ Xatolik: {str(e)[:200]}")
 
 def main():
-    print("🤖 Slayd Bot ishga tushmoqda...")
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_topic))
     app.add_handler(CallbackQueryHandler(handle_slide_count))
-
-    print("✅ Bot muvaffaqiyatli ishga tushdi!")
-    app.run_polling(drop_pending_updates=True)   # Muhim!
-
+    
+    print("✅ Bot ishga tushdi! (Gemini Image bilan)")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
