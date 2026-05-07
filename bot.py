@@ -74,7 +74,7 @@ def extract_image_prompt(content):
 
 
 # ================== 2. REPLICATE - RASM YARATISH ==================
-def generate_image_replicate(prompt: str):
+async def generate_image_replicate(prompt: str):   # ← async qo'shildi
     if not REPLICATE_API_KEY:
         print("⚠️ REPLICATE_API_KEY yo'q")
         return None
@@ -123,26 +123,12 @@ def generate_image_replicate(prompt: str):
                 print(f"   ❌ FLUX failed: {data.get('error')}")
                 return None
 
-            await asyncio.sleep(1.8)  # Rate limit uchun
+            await asyncio.sleep(1.8)   # Endi xato bermaydi
 
         return None
     except Exception as e:
         print(f"   ❌ Replicate xatosi: {e}")
         return None
-
-
-def download_image(url, filename):
-    try:
-        r = requests.get(url, timeout=30)
-        if r.status_code == 200:
-            with open(filename, 'wb') as f:
-                f.write(r.content)
-            return True
-    except:
-        pass
-    return False
-
-
 # ================== 3. POWERPOINT YARATISH ==================
 async def create_presentation(topic, num_slides=5):
     print(f"🎯 '{topic}' uchun {num_slides} slayd tayyorlanmoqda...")
