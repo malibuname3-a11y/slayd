@@ -1,12 +1,12 @@
 import os
+import asyncio
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup  # Qo'shildi!
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes  # CallbackQueryHandler qo'shildi!
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from google import genai
 from google.genai import types
-import asyncio
 
 # ========== KONFIGURATSIYA ==========
 load_dotenv()
@@ -20,13 +20,10 @@ if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ========== TO'G'RI MODELLAR ==========
-TEXT_MODEL = "gemini-2.0-flash"                       # Matn yozish
-IMAGE_MODEL = "gemini-2.5-flash-image"                # Rasm yaratish (yangilangan!)
+TEXT_MODEL = "gemini-2.0-flash"
+IMAGE_MODEL = "gemini-2.5-flash-image"
 
-# Agar gemini-2.5-flash-image ishlamasa, buni sinab ko'ring:
-# IMAGE_MODEL = "imagen-4.0-generate-001"            # Imagen 4 (muqobil)
-
-# ========== SLAYDLAR YARATISH (20 slaydgacha) ==========
+# ========== SLAYDLAR YARATISH ==========
 def generate_slide_content(topic, slide_num, total_slides):
     """Gemini orqali slayd matnini yaratish"""
     prompt = f"""
@@ -36,7 +33,7 @@ def generate_slide_content(topic, slide_num, total_slides):
     1. TITLE: Qisqa, aniq sarlavha
     2. POINTS: 3-4 ta asosiy nuqta
     
-    Format (aynan shu formatda javob ber):
+    Format:
     TITLE: [sarlavha]
     POINTS: [nuqta1] | [nuqta2] | [nuqta3] | [nuqta4]
     """
@@ -126,7 +123,7 @@ def create_full_presentation(topic, num_slides=10):
         slide.placeholders[1].text = points
         
         # Rasm qo'shish (faqat 1-10 slaydlarga, tezlik uchun)
-        if i <= 10:  # 10 tagacha rasm qo'shamiz (API limiti uchun)
+        if i <= 10:
             img_data = generate_slide_image(topic, title)
             if img_data:
                 with open(f"temp_slide_{i}.png", "wb") as f:
@@ -156,13 +153,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎉 **Gemini Slayd Botiga Xush Kelibsiz!**\n\n"
         "📝 **Qanday ishlaydi:**\n"
-        "1. Mavzuni yozing (masalan: 'Sun'iy intellekt')\n"
+        "1. Mavzuni yozing\n"
         "2. Slaydlar sonini tanlang (3 dan 20 gacha)\n"
         "3. Kuting va taqdimotni yuklab oling\n\n"
-        "✨ Har bir slaydda:\n"
-        "✅ Professional matn\n"
-        "✅ Mos rasm (birinchi 10 slayd)\n"
-        "✅ Chiroyli dizayn\n\n"
+        "✨ Har bir slaydda professional matn va mos rasm\n\n"
         "**Mavzuni yozing:**",
         parse_mode="Markdown"
     )
@@ -172,16 +166,14 @@ async def handle_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['topic'] = topic
     
     # Slayd sonini tanlash tugmalari
-    buttons = []
-    row = []
-    for i in range(3, 21, 2):
-        row.append([InlineKeyboardButton(f"📊 {i} slayd", callback_data=str(i))])
-        if len(row) == 3:
-            buttons.extend(row)
-            row = []
-    if row:
-        buttons.extend(row)
-    
+    buttons = [
+        [InlineKeyboardButton("📊 3 slayd", callback_data="3"), 
+         InlineKeyboardButton("📈 5 slayd", callback_data="5")],
+        [InlineKeyboardButton("📚 7 slayd", callback_data="7"), 
+         InlineKeyboardButton("🎨 10 slayd", callback_data="10")],
+        [InlineKeyboardButton("🏆 15 slayd", callback_data="15"), 
+         InlineKeyboardButton("🌟 20 slayd", callback_data="20")]
+    ]
     reply_markup = InlineKeyboardMarkup(buttons)
     
     await update.message.reply_text(
@@ -200,8 +192,8 @@ async def handle_slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text(
         f"⏳ **{topic}** - {num_slides} slayd tayyorlanmoqda...\n\n"
         f"📝 Matn yozilmoqda...\n"
-        f"🎨 Rasm yaratilmoqda (1-10 slaydlar)...\n"
-        f"⏱ Taxminan {num_slides * 3 // 2} daqiqa vaqt ketadi.\n\n"
+        f"🎨 Rasm yaratilmoqda...\n"
+        f"⏱ Taxminan {num_slides * 2} daqiqa vaqt ketadi.\n\n"
         f"⚠️ Iltimos, kuting!",
         parse_mode="Markdown"
     )
@@ -209,15 +201,11 @@ async def handle_slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         filename = create_full_presentation(topic, num_slides)
         
-        # Fayl hajmini tekshirish
-        file_size = os.path.getsize(filename) / (1024 * 1024)
-        
         with open(filename, 'rb') as f:
             caption = f"✅ **Taqdimot tayyor!**\n\n"
             caption += f"📌 Mavzu: {topic}\n"
             caption += f"📊 Slaydlar: {num_slides}\n"
-            caption += f"🎨 Rasmlar: 1-10 slaydlarda\n"
-            caption += f"📦 Hajmi: {file_size:.1f} MB\n\n"
+            caption += f"🎨 Rasmlar: Birinchi 10 slaydda\n\n"
             caption += f"Gemini AI tomonidan yaratildi"
             
             await query.message.reply_document(
@@ -238,13 +226,14 @@ def main():
     print(f"🎨 Rasm modeli: {IMAGE_MODEL}")
     
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+    
+    # Handlerlar
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_topic))
     app.add_handler(CallbackQueryHandler(handle_slide_count))
     
     print("✅ Bot ishga tushdi!")
     print("💡 Foydalanuvchi 3-20 slayd tanlashi mumkin")
-    print("🎨 1-10 slaydlarga avtomatik rasm qo'shiladi")
     
     app.run_polling()
 
