@@ -1,11 +1,11 @@
+# Python 3.10+ talab qiladi (ixtiyoriy)
+python_version >= "3.10"
+
 # Telegram Bot
 python-telegram-bot>=20.0
 
-# Environment variables (ixtiyoriy, .env fayl uchun)
+# HTTP async (Gemini API va Pollinations AI rasmlar uchun)
+aiohttp>=3.8.0
+
+# Environment variables
 python-dotenv>=1.0.0
-
-# PDF generatsiya (agar kerak bo'lsa)
-# weasyprint>=60.0
-
-# Image processing (agar kerak bo'lsa)
-# Pillow>=10.0.0
