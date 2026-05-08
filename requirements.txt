@@ -1,4 +1,11 @@
-python-telegram-bot
-python-pptx
-google-genai
-python-dotenv
+# Telegram Bot
+python-telegram-bot>=20.0
+
+# Environment variables (ixtiyoriy, .env fayl uchun)
+python-dotenv>=1.0.0
+
+# PDF generatsiya (agar kerak bo'lsa)
+# weasyprint>=60.0
+
+# Image processing (agar kerak bo'lsa)
+# Pillow>=10.0.0
