@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Tokenni o'zingizning bot tokeningiz bilan almashtiring
-BOT_TOKEN = "BOT_TOKEN"
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
 # Conversation states
 TITLE, SLIDE_COUNT, SLIDE_CONTENT, SLIDE_IMAGE, CONFIRM = range(5)
