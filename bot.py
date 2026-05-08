@@ -6,7 +6,7 @@ import shutil
 import asyncio
 import aiohttp
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List, Optional
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import (
@@ -19,132 +19,159 @@ from telegram.ext import (
     filters
 )
 
-# ==================== LOGGING ====================
+# Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# ==================== TOKEN BOSHQARUVI (AVTOMATIK) ====================
+# ==================== TOKEN BOSHQARUVI ====================
 
 def get_bot_token():
-    """
-    Tokenni quyidagi tartibda avtomatik qidiradi:
-    1. Environment variable (BOT_TOKEN)
-    2. .env fayl
-    3. config.json fayl (faqat bot_token maydoni)
-    4. ~/.bot_token fayl (local)
-    """
-
-    # 1. Environment variable
+    """Tokenni qidirish: muhit -> .env -> interaktiv"""
     token = os.getenv('BOT_TOKEN')
     if token:
-        logger.info("✅ Token: Environment variable")
         return token
 
-    # 2. .env fayl
     try:
         from dotenv import load_dotenv
         load_dotenv()
         token = os.getenv('BOT_TOKEN')
         if token:
-            logger.info("✅ Token: .env fayl")
             return token
     except ImportError:
         pass
 
-    # 3. config.json fayl (faqat bot_token)
-    config_paths = [
-        'config.json',
-        os.path.expanduser('~/.telegram_bot_config.json'),
-        '/etc/telegram_bot/config.json'
-    ]
-
-    for path in config_paths:
-        if os.path.exists(path):
-            try:
-                with open(path, 'r') as f:
-                    config = json.load(f)
-                    # Faqat bot_token maydonini qidiramiz
-                    token = config.get('bot_token')
-                    if token:
-                        logger.info(f"✅ Token: {path}")
-                        return token
-            except Exception:
-                pass
-
-    # 4. ~/.bot_token fayl (local development)
     token_file = os.path.expanduser('~/.bot_token')
     if os.path.exists(token_file):
-        try:
-            with open(token_file, 'r') as f:
-                token = f.read().strip()
-                if token:
-                    logger.info("✅ Token: ~/.bot_token")
-                    return token
-        except Exception:
-            pass
+        with open(token_file, 'r') as f:
+            return f.read().strip()
 
-    # Token topilmadi
-    logger.error("❌ BOT_TOKEN topilmadi!")
-    logger.error("Iltimos, quyidagi usullardan birini tanlang:")
-    logger.error("1. Environment variable: export BOT_TOKEN=your_token")
-    logger.error("2. .env fayl: echo BOT_TOKEN=your_token > .env")
-    logger.error("3. config.json: {'bot_token': 'your_token'}")
-    raise ValueError("BOT_TOKEN topilmadi!")
+    print("\n" + "="*50)
+    print("🔐 BOT TOKENI TALAB ETILMOQDA")
+    print("@BotFather dan olingan tokenni kiriting")
+    print("="*50)
 
-# Tokenni olish
+    while True:
+        token = input("\nBot token: ").strip()
+        if ':' in token:
+            save = input("Saqlansinmi? (ha/yo'q): ").strip().lower()
+            if save in ['ha', 'yes', 'y']:
+                with open(token_file, 'w') as f:
+                    f.write(token)
+                os.chmod(token_file, 0o600)
+            return token
+        print("❌ Noto'g'ri format!")
+
 BOT_TOKEN = get_bot_token()
 
-# ==================== GEMINI API KALITI (AVTOMATIK) ====================
+# ==================== AI API SOZLAMLARI ====================
 
-def get_gemini_key():
-    """Gemini API kalitini avtomatik qidirish"""
-
-    # 1. Environment variable
-    key = os.getenv('GEMINI_API_KEY')
-    if key:
-        logger.info("✅ Gemini: Environment variable")
-        return key
-
-    # 2. .env fayl
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-        key = os.getenv('GEMINI_API_KEY')
-        if key:
-            logger.info("✅ Gemini: .env fayl")
-            return key
-    except ImportError:
-        pass
-
-    # 3. config.json
-    if os.path.exists('config.json'):
-        try:
-            with open('config.json', 'r') as f:
-                config = json.load(f)
-                key = config.get('gemini_api_key', '')
-                if key:
-                    logger.info("✅ Gemini: config.json")
-                    return key
-        except Exception:
-            pass
-
-    logger.warning("⚠️ GEMINI_API_KEY topilmadi. Oddiy matn ishlatiladi.")
-    return ''
-
-GEMINI_API_KEY = get_gemini_key()
+# Gemini API - BEPUL tier (Google AI Studio)
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 
-# ==================== POLLINATIONS AI ====================
+# Pollinations AI - BEPUL, API kalitsiz!
 POLLINATIONS_BASE = "https://image.pollinations.ai/prompt"
 
-# ==================== CONVERSATION STATES ====================
+# Conversation states
 TOPIC, SLIDE_COUNT, GENERATING = range(3)
 
-# ==================== FOYDALANUVCHI MA'LUMOTLARI ====================
 user_data: Dict[int, dict] = {}
+
+# ==================== HTML TEMPLATE ====================
+
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/theme/white.min.css">
+    <style>
+        .reveal {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }}
+        .reveal h1, .reveal h2 {{
+            color: #2c3e50;
+            text-transform: none;
+            font-weight: 600;
+        }}
+        .reveal p {{
+            color: #34495e;
+            line-height: 1.6;
+            font-size: 0.85em;
+        }}
+        .reveal .slides section {{
+            padding: 20px;
+        }}
+        .reveal img {{
+            max-height: 350px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+        }}
+        .reveal .progress {{
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            height: 4px;
+        }}
+        .slide-number {{
+            background: #3498db;
+            color: white;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 0.8em;
+        }}
+        .title-slide {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }}
+        .title-slide h1 {{
+            color: white !important;
+            font-size: 2.5em !important;
+        }}
+        .title-slide p {{
+            color: rgba(255,255,255,0.9) !important;
+        }}
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+            {slides}
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.js"></script>
+    <script>
+        Reveal.initialize({{
+            hash: true,
+            slideNumber: 'c/t',
+            transition: 'slide',
+            width: 1200,
+            height: 700,
+            margin: 0.1,
+            backgroundTransition: 'fade'
+        }});
+    </script>
+</body>
+</html>"""
+
+SLIDE_TEMPLATE = """
+<section data-background="{bg_color}">
+    <h2>{title}</h2>
+    <p>{content}</p>
+    {image}
+</section>
+"""
+
+TITLE_SLIDE = """
+<section class="title-slide">
+    <h1>{title}</h1>
+    <p style="font-size: 1.3em; margin-top: 20px;">🤖 AI tomonidan yaratilgan taqdimot</p>
+    <p style="font-size: 0.9em; margin-top: 50px;">{date}</p>
+    <p style="font-size: 0.8em; margin-top: 20px; opacity: 0.7;">Gemini + Pollinations AI</p>
+</section>
+"""
 
 # ==================== AI FUNKSiyalari ====================
 
@@ -254,126 +281,6 @@ async def generate_image(session: aiohttp.ClientSession, prompt: str, save_path:
         logger.error(f"Rasm generatsiya xatolik: {e}")
         return False
 
-# ==================== PPTX YARATISH ====================
-
-def create_pptx(data: dict) -> str:
-    """python-pptx orqali PowerPoint taqdimot yaratish"""
-
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RgbColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-    from pptx.enum.shapes import MSO_SHAPE
-
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
-
-    temp_dir = data['temp_dir']
-    pptx_path = os.path.join(temp_dir, f"{data['topic']}.pptx")
-
-    # Title slide
-    title_slide_layout = prs.slide_layouts[6]  # Blank layout
-    slide = prs.slides.add_slide(title_slide_layout)
-
-    # Background
-    background = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), 
-        prs.slide_width, prs.slide_height
-    )
-    background.fill.solid()
-    background.fill.fore_color.rgb = RgbColor(102, 126, 234)
-    background.line.fill.background()
-
-    # Title
-    title_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(12.333), Inches(1.5))
-    tf = title_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = data['topic']
-    p.font.size = Pt(44)
-    p.font.bold = True
-    p.font.color.rgb = RgbColor(255, 255, 255)
-    p.alignment = PP_ALIGN.CENTER
-
-    # Subtitle
-    sub_box = slide.shapes.add_textbox(Inches(0.5), Inches(4.2), Inches(12.333), Inches(0.8))
-    tf = sub_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = "🤖 AI tomonidan yaratilgan taqdimot"
-    p.font.size = Pt(20)
-    p.font.color.rgb = RgbColor(255, 255, 255)
-    p.alignment = PP_ALIGN.CENTER
-
-    # Date
-    date_box = slide.shapes.add_textbox(Inches(0.5), Inches(5.5), Inches(12.333), Inches(0.5))
-    tf = date_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = datetime.now().strftime("%d.%m.%Y")
-    p.font.size = Pt(14)
-    p.font.color.rgb = RgbColor(200, 200, 200)
-    p.alignment = PP_ALIGN.CENTER
-
-    # Content slides
-    colors = [
-        (248, 249, 250), (255, 245, 245), (240, 255, 244),
-        (240, 248, 255), (255, 251, 235), (245, 243, 255)
-    ]
-
-    for i, slide_data in enumerate(data['slides'], 1):
-        slide_layout = prs.slide_layouts[6]
-        slide = prs.slides.add_slide(slide_layout)
-
-        # Background
-        bg = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0),
-            prs.slide_width, prs.slide_height
-        )
-        bg.fill.solid()
-        color = colors[i % len(colors)]
-        bg.fill.fore_color.rgb = RgbColor(*color)
-        bg.line.fill.background()
-
-        # Title
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(12.333), Inches(1))
-        tf = title_box.text_frame
-        p = tf.paragraphs[0]
-        p.text = slide_data['title']
-        p.font.size = Pt(32)
-        p.font.bold = True
-        p.font.color.rgb = RgbColor(44, 62, 80)
-        p.alignment = PP_ALIGN.LEFT
-
-        # Content
-        content_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12.333), Inches(2.5))
-        tf = content_box.text_frame
-        tf.word_wrap = True
-
-        content_lines = slide_data['content'].split('\n')
-        for j, line in enumerate(content_lines):
-            if j == 0:
-                p = tf.paragraphs[0]
-            else:
-                p = tf.add_paragraph()
-            p.text = line
-            p.font.size = Pt(18)
-            p.font.color.rgb = RgbColor(52, 73, 94)
-            p.space_after = Pt(12)
-
-        # Image
-        if i in data['images'] and os.path.exists(data['images'][i]):
-            try:
-                img_path = data['images'][i]
-                slide.shapes.add_picture(
-                    img_path, 
-                    Inches(3.5), Inches(4.2), 
-                    width=Inches(6.333)
-                )
-            except Exception as e:
-                logger.warning(f"Rasm qo'shishda xatolik: {e}")
-
-    prs.save(pptx_path)
-    return pptx_path
-
 # ==================== BOT HANDLERLARI ====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -395,7 +302,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         "🎨 *AI Taqdimot Generator*\n\n"
         "Men sizga faqat **mavzu** aytishiz kifoya — qolganini\n"
         "*Gemini AI* matn yozadi va *Pollinations AI* rasmlar chizadi!\n\n"
-        "📊 Tayyor taqdimot: **PowerPoint (.pptx)** formatida!\n\n"
         "✍️ Taqdimot mavzusini kiriting:\n"
         "_Masalan: Sun'iy intellekt, O'zbekiston tarixi, Biznes reja_",
         parse_mode='Markdown'
@@ -498,9 +404,9 @@ async def generate_presentation(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 logger.error(f"Rasm {i} xatolik: {e}")
 
-        # 3. PPTX yaratish va yuborish
+        # 3. HTML yaratish va yuborish
         await update_status(context, chat_id, data['message_id'],
-                          "📦 PowerPoint yaratilmoqda...", total, total, done=True)
+                          "📦 Taqdimot yig'ilmoqda...", total, total, done=True)
 
         await build_and_send_presentation(context, chat_id, user_id)
 
@@ -508,7 +414,7 @@ async def update_status(context, chat_id: int, message_id: int,
                        status: str, current: int, total: int, image: bool = False, done: bool = False):
     """Status xabarini yangilash"""
     try:
-        data = user_data.get(chat_id, {})
+        data = user_data.get(context._chat_id, {})
         topic = data.get('topic', 'Taqdimot')
 
         progress = "█" * current + "░" * (total - current)
@@ -534,23 +440,67 @@ async def update_status(context, chat_id: int, message_id: int,
         logger.warning(f"Status yangilash xatolik: {e}")
 
 async def build_and_send_presentation(context, chat_id: int, user_id: int):
-    """PPTX taqdimot yaratish va yuborish"""
+    """HTML taqdimot yaratish va yuborish"""
     data = user_data[user_id]
 
     try:
-        # PPTX yaratish
-        pptx_path = create_pptx(data)
+        temp_dir = data['temp_dir']
+        html_path = os.path.join(temp_dir, "presentation.html")
 
-        # PPTX yuborish
-        with open(pptx_path, 'rb') as f:
+        slides_html = ""
+
+        # Title slide
+        slides_html += TITLE_SLIDE.format(
+            title=data['topic'],
+            date=datetime.now().strftime("%d.%m.%Y")
+        )
+
+        # Content slides
+        colors = ['#f8f9fa', '#fff5f5', '#f0fff4', '#f0f8ff', '#fffbeb', '#f5f3ff']
+
+        for i, slide in enumerate(data['slides'], 1):
+            image_html = ""
+            if i in data['images'] and os.path.exists(data['images'][i]):
+                image_name = f"slide_{i}.jpg"
+                image_html = f'<img src="{image_name}" alt="Slide {i}" style="max-width:75%; margin-top:20px;">'
+
+            bg = colors[i % len(colors)]
+            slides_html += SLIDE_TEMPLATE.format(
+                title=slide['title'],
+                content=slide['content'].replace('\n', '<br>'),
+                image=image_html,
+                bg_color=bg
+            )
+
+        # Full HTML
+        final_html = HTML_TEMPLATE.format(
+            title=data['topic'],
+            slides=slides_html
+        )
+
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(final_html)
+
+        # ZIP yaratish
+        import zipfile
+        zip_path = os.path.join(temp_dir, "presentation.zip")
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(html_path, "presentation.html")
+            for i, img_path in data['images'].items():
+                if os.path.exists(img_path):
+                    zipf.write(img_path, f"slide_{i}.jpg")
+
+        # ZIP yuborish
+        with open(zip_path, 'rb') as f:
             await context.bot.send_document(
                 chat_id=chat_id,
-                document=InputFile(f, filename=f"{data['topic']}.pptx"),
+                document=InputFile(f, filename=f"{data['topic']}.zip"),
                 caption=f"✅ *{data['topic']}* tayyor!\n\n"
                         f"📊 Slaydlar: {data['slide_count']}\n"
                         f"🖼️ Rasmlar: {len(data['images'])}\n"
                         f"🤖 Yaratuvchi: Gemini + Pollinations AI\n\n"
-                        f"📁 PowerPoint faylni yuklab oling",
+                        f"📁 `presentation.html` ni brauzerda oching",
                 parse_mode='Markdown'
             )
 
@@ -576,7 +526,7 @@ async def build_and_send_presentation(context, chat_id: int, user_id: int):
         logger.error(f"Taqdimot yuborish xatolik: {e}")
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"❌ Xatolik yuz berdi: {str(e)}\nIltimos, qayta urinib ko'ring."
+            text="❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
         )
         cleanup_user_data(user_id)
 
@@ -605,14 +555,14 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "1. /start — Mavzu kiriting\n"
         "2. Slaydlar sonini tanlang\n"
         "3. AI avtomatik yozadi + chizadi\n"
-        "4. **PowerPoint (.pptx)** faylni yuklab oling\n\n"
+        "4. ZIP faylni yuklab oling\n\n"
         f"*AI holati:*\n"
         f"📝 Matn: {gemini_status}\n"
         f"🖼️ Rasm: Pollinations AI (bepul)\n\n"
         "*Eslatma:*\n"
         "- Generatsiya 1-2 daqiqa\n"
         "- Har bir slayd unikal rasm\n"
-        "- PowerPoint format",
+        "- HTML5 reveal.js format",
         parse_mode='Markdown'
     )
 
@@ -634,10 +584,9 @@ def main():
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler('help', help_cmd))
 
-    logger.info("🚀 AI Taqdimot Boti ishga tushdi...")
-    logger.info(f"📝 Gemini: {'Ulangan' if GEMINI_API_KEY else 'Mavjud emas'}")
-    logger.info("🖼️ Pollinations: Bepul")
-    logger.info("📊 Format: PowerPoint (.pptx)")
+    print("🚀 AI Taqdimot Boti ishga tushdi...")
+    print(f"📝 Gemini: {'Ulangan' if GEMINI_API_KEY else 'Mavjud emas'}")
+    print("🖼️ Pollinations: Bepul")
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
