@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Maxfiy ma'lumotlar (TOKEN BUNDA EMAS!)
+.env
+.env.example
+*.env
+.bot_token
+*.token
+config.json   # agar token shu faylda bo'lsa
+
+# Hujjatlar
+README.md
+*.md
+docs/
+
+# Test
+tests/
+test_*.py
+*_test.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Loglar
+*.log
+logs/
