@@ -1,4 +1,15 @@
 
+import os
+
+# Papka mavjudligini tekshirish va yaratish
+output_dir = '/mnt/agents/output'
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"✅ Papka yaratildi: {output_dir}")
+else:
+    print(f"✅ Papka mavjud: {output_dir}")
+
+# Faylni qayta saqlash
 code = '''import logging
 import os
 import json
@@ -70,12 +81,10 @@ BOT_TOKEN = get_bot_token()
 # ==================== AI API SOZLAMLARI ====================
 
 # Gemini API - BEPUL tier (Google AI Studio)
-# 1000 so'rov/kun, 15 RPM limit
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = "gemini-2.5-flash-lite"  # Bepul tier
+GEMINI_MODEL = "gemini-2.5-flash-lite"
 
 # Pollinations AI - BEPUL, API kalitsiz!
-# https://image.pollinations.ai/prompt/{prompt}
 POLLINATIONS_BASE = "https://image.pollinations.ai/prompt"
 
 # Conversation states
@@ -182,13 +191,7 @@ async def generate_slide_content(session: aiohttp.ClientSession, topic: str, sli
     """Gemini API orqali slayd matnini generatsiya qilish"""
     
     if not GEMINI_API_KEY:
-        # Agar API kalit bo'lmasa, oddiy matn qaytarish
-        return {
-            'title': f"{topic} - {slide_num}-qism",
-            'content': f"Bu slayd {topic} mavzusining {slide_num}-qismi haqida.\\n\\n"
-                      f"Taqdimotda jami {total} ta slayd mavjud.",
-            'image_prompt': f"{topic} presentation slide {slide_num}, professional, clean design"
-        }
+        return fallback_content(topic, slide_num, total)
     
     prompt = f"""Siz professional taqdimot yaratuvchisisiz.
 
@@ -226,7 +229,6 @@ Qoidalar:
                 data = await resp.json()
                 text = data['candidates'][0]['content']['parts'][0]['text']
                 
-                # JSON ni ajratib olish
                 json_str = text.strip()
                 if json_str.startswith('```json'):
                     json_str = json_str[7:]
@@ -246,7 +248,7 @@ Qoidalar:
         return fallback_content(topic, slide_num, total)
 
 def fallback_content(topic: str, slide_num: int, total: int) -> dict:
-    """Zaxira matn (API ishlamaganda)"""
+    """Zaxira matn"""
     contents = [
         ("Kirish", f"{topic} mavzusiga umumiy kirish.\\nAsosiy tushunchalar va maqsadlar."),
         ("Asosiy tushuncha", f"{topic} ning markaziy g'oyasi.\\nMuhim jihatlar va xususiyatlar."),
@@ -265,14 +267,11 @@ def fallback_content(topic: str, slide_num: int, total: int) -> dict:
     }
 
 async def generate_image(session: aiohttp.ClientSession, prompt: str, save_path: str) -> bool:
-    """Pollinations AI orqali rasm generatsiya (BEPUL, API kalitsiz!)"""
+    """Pollinations AI orqali rasm generatsiya (BEPUL!)"""
     
-    # Promptni tozalash va URL uchun kodlash
     import urllib.parse
-    clean_prompt = prompt.replace(' ', '_').replace(',', '').replace('.', '')[:100]
     encoded_prompt = urllib.parse.quote(prompt[:200])
     
-    # Pollinations URL
     url = f"{POLLINATIONS_BASE}/{encoded_prompt}?width=1024&height=768&nologo=true&seed=42&enhance=true"
     
     try:
@@ -282,7 +281,6 @@ async def generate_image(session: aiohttp.ClientSession, prompt: str, save_path:
                 with open(save_path, 'wb') as f:
                     f.write(image_data)
                 
-                # Rasm hajmini tekshirish
                 if os.path.getsize(save_path) > 1000:
                     return True
                 else:
@@ -301,7 +299,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Botni ishga tushirish"""
     user_id = update.effective_user.id
     
-    # Eski ma'lumotlarni tozalash
     cleanup_user_data(user_id)
     
     user_data[user_id] = {
@@ -363,7 +360,6 @@ async def get_slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     count = int(query.data)
     user_data[user_id]['slide_count'] = count
     
-    # Generatsiya xabarini yuborish
     status_msg = await query.edit_message_text(
         f"🚀 *{user_data[user_id]['topic']}* taqdimoti yaratilmoqda...\\n\\n"
         f"⏳ Slaydlar: 0/{count}\\n"
@@ -374,7 +370,6 @@ async def get_slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     user_data[user_id]['message_id'] = status_msg.message_id
     
-    # Generatsiyani boshlash
     asyncio.create_task(
         generate_presentation(update, context, user_id)
     )
@@ -392,14 +387,13 @@ async def generate_presentation(update: Update, context: ContextTypes.DEFAULT_TY
         # 1. Slayd matnlarini generatsiya qilish
         for i in range(1, total + 1):
             try:
-                # Statusni yangilash
                 await update_status(context, chat_id, data['message_id'], 
                                   f"✍️ {i}-slayd matni yozilmoqda...", i, total)
                 
                 slide_content = await generate_slide_content(session, topic, i, total)
                 data['slides'].append(slide_content)
                 
-                await asyncio.sleep(0.5)  # Rate limit
+                await asyncio.sleep(0.5)
                 
             except Exception as e:
                 logger.error(f"Slayd {i} generatsiya xatolik: {e}")
@@ -417,7 +411,7 @@ async def generate_presentation(update: Update, context: ContextTypes.DEFAULT_TY
                 if success:
                     data['images'][i] = image_path
                 
-                await asyncio.sleep(1)  # Rate limit
+                await asyncio.sleep(1)
                 
             except Exception as e:
                 logger.error(f"Rasm {i} xatolik: {e}")
@@ -522,7 +516,7 @@ async def build_and_send_presentation(context, chat_id: int, user_id: int):
                 parse_mode='Markdown'
             )
         
-        # Preview rasmini yuborish (birinchi rasm)
+        # Preview rasmini yuborish
         if data['images']:
             first_img = list(data['images'].values())[0]
             if os.path.exists(first_img):
@@ -594,7 +588,7 @@ def main():
         states={
             TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_topic)],
             SLIDE_COUNT: [CallbackQueryHandler(get_slide_count, pattern='^\\d+$')],
-            GENERATING: [],  # Background task
+            GENERATING: [],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
@@ -612,10 +606,16 @@ if __name__ == '__main__':
     main()
 '''
 
-# Faylni saqlash
-output_path = '/mnt/agents/output/ai_presentation_bot.py'
+output_path = os.path.join(output_dir, 'ai_presentation_bot.py')
 with open(output_path, 'w', encoding='utf-8') as f:
     f.write(code)
 
-print(f"✅ AI Presentation Bot saqlandi: {output_path}")
-print(f"📊 Fayl hajmi: {len(code)} belgi")
+# Fayl hajmini tekshirish
+file_size = os.path.getsize(output_path)
+print(f"✅ Fayl saqlandi: {output_path}")
+print(f"📊 Fayl hajmi: {file_size} bayt")
+
+# Faylni o'qishni tekshirish
+with open(output_path, 'r', encoding='utf-8') as f:
+    content = f.read()
+    print(f"✅ Fayl o'qildi: {len(content)} belgi")
