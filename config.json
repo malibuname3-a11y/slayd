@@ -1,0 +1,17 @@
+{
+  "bot_settings": {
+    "parse_mode": "Markdown",
+    "disable_web_page_preview": true
+  },
+  "presentation": {
+    "max_slides": 20,
+    "default_theme": "white",
+    "transition": "slide",
+    "width": 1200,
+    "height": 700
+  },
+  "files": {
+    "allowed_image_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_image_size_mb": 5
+  }
+}
