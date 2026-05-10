@@ -58,7 +58,7 @@ async def gemini_handler(message: Message):
     user_text = message.text.strip()
     
     if user_text.startswith("/start"):
-        await message.answer("👋 Salom! Men Gemini AI botiman.\nSavollaringizni yozing ✨")
+        await message.answer("👋 Salom! Men Azizbek AI botiman.\nSavollaringizni yozing ✨")
         return
 
     await message.chat.do("typing")
@@ -82,7 +82,7 @@ async def gemini_handler(message: Message):
         await message.answer("⚠️ Xatolik yuz berdi. Qayta urinib ko‘ring.")
 
 async def main():
-    print("🚀 Gemini Telegram Bot ishga tushdi!")
+    print("🚀 Azizbek Telegram Bot ishga tushdi!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
