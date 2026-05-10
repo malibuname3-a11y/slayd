@@ -24,7 +24,7 @@ if not GEMINI_API_KEY:
 
 # Gemini sozlamalari
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-3.1-flash')   # gemini-3.1-pro ham qo'yishingiz mumkin
+model = genai.GenerativeModel('gemini-2.5-flash')   # gemini-3.1-pro ham qo'yishingiz mumkin
 
 # ===================== BOT =====================
 bot = Bot(token=BOT_TOKEN)
