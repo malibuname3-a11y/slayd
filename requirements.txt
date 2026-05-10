@@ -1,11 +1,3 @@
-# Python 3.10+ talab qiladi (ixtiyoriy)
-python_version >= "3.10"
-
-# Telegram Bot
-python-telegram-bot>=20.0
-
-# HTTP async (Gemini API va Pollinations AI rasmlar uchun)
-aiohttp>=3.8.0
-
-# Environment variables
-python-dotenv>=1.0.0
+aiogram==3.13.0
+google-generativeai==0.8.0
+python-dotenv==1.0.1
