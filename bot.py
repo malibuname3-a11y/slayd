@@ -17,7 +17,7 @@ if not BOT_TOKEN or not GEMINI_API_KEY:
     sys.exit(1)
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-3.1-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
