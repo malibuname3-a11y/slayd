@@ -22,9 +22,20 @@ model = genai.GenerativeModel('gemini-2.5-flash')
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ===================== UZUN XABARNI BO‘LISH =====================
-def split_message(text: str, max_length: int = 4000):
-    """Uzun matnni bo'lib yuborish"""
+def clean_text(text: str) -> str:
+    """Markdown xatolarini tozalash"""
+    # Eng ko'p muammo tug'diradigan belgilarni tozalaymiz
+    replacements = [
+        ("**", "*"),      # Bold ni oddiy qilish
+        ("__", "_"),
+        ("```", "`"),
+    ]
+    for old, new in replacements:
+        text = text.replace(old, new)
+    return text.strip()
+
+def split_message(text: str, max_length: int = 3900):
+    """Uzun matnni xavfsiz bo'lish"""
     if len(text) <= max_length:
         return [text]
     
@@ -33,8 +44,9 @@ def split_message(text: str, max_length: int = 4000):
         if len(text) <= max_length:
             parts.append(text)
             break
-        # Oxirgi bo'sh joydan kesish (so'z buzilmasligi uchun)
-        split_pos = text[:max_length].rfind(' ')
+        split_pos = text[:max_length].rfind('\n')
+        if split_pos == -1:
+            split_pos = text[:max_length].rfind(' ')
         if split_pos == -1:
             split_pos = max_length
         parts.append(text[:split_pos])
@@ -54,22 +66,24 @@ async def gemini_handler(message: Message):
     try:
         response = model.generate_content(user_text)
         reply_text = response.text.strip()
-
-        # Agar javob uzun bo'lsa, bo'lib yuboramiz
-        messages = split_message(reply_text)
+        
+        # Markdown tozalash
+        clean_reply = clean_text(reply_text)
+        
+        # Bo'lib yuborish
+        messages = split_message(clean_reply)
         
         for part in messages:
-            await message.answer(part, parse_mode="Markdown")
-            
+            if part:  # Bo'sh bo'lmasin
+                await message.answer(part)
+                
     except Exception as e:
         print(f"Xatolik: {e}")
         await message.answer("⚠️ Xatolik yuz berdi. Qayta urinib ko‘ring.")
 
-
 async def main():
     print("🚀 Gemini Telegram Bot ishga tushdi!")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
