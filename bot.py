@@ -1,6 +1,6 @@
 import telebot
 from instagrapi import Client
-from collections import defaultdict
+from collections import defaultdict, Counter
 import json
 import os
 from dotenv import load_dotenv
@@ -8,50 +8,27 @@ from dotenv import load_dotenv
 # .env faylini yuklash
 load_dotenv()
 
-# ================== SOZLAMALAR ==================
+# ================== AVTOMATIK O'QISH ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 INSTA_USERNAME = os.getenv("INSTA_USERNAME")
 INSTA_PASSWORD = os.getenv("INSTA_PASSWORD")
 CURRENT_POST_URL = os.getenv("POST_URL")
 
-if not all([TELEGRAM_TOKEN, INSTA_USERNAME, INSTA_PASSWORD]):
-    print("❌ .env faylida ma'lumotlar yetarli emas!")
+if not TELEGRAM_TOKEN:
+    print("❌ TELEGRAM_TOKEN topilmadi! .env faylini tekshiring.")
     exit()
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 cl = Client()
 
-DATA_FILE = "tracking.json"
-tracking_data = {"likers": set(), "comments": defaultdict(list)}
-
-# Eski ma'lumotlarni yuklash
-if os.path.exists(DATA_FILE):
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            tracking_data["likers"] = set(data.get("likers", []))
-            tracking_data["comments"] = defaultdict(list, data.get("comments", {}))
-    except:
-        pass
-
-def save_tracking():
-    try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump({
-                "likers": list(tracking_data["likers"]),
-                "comments": dict(tracking_data["comments"])
-            }, f, ensure_ascii=False, indent=2)
-    except:
-        pass
-
-# Instagramga kirish
+# ================== LOGIN ==================
 def instagram_login():
     try:
         cl.login(INSTA_USERNAME, INSTA_PASSWORD)
         print("✅ Instagramga muvaffaqiyatli kirdik!")
         return True
     except Exception as e:
-        print(f"❌ Instagram login xatosi: {e}")
+        print(f"❌ Login xatosi: {e}")
         return False
 
 instagram_login()
@@ -60,9 +37,9 @@ instagram_login()
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(message, 
-        "✅ Bot muvaffaqiyatli ishga tushdi!\n\n"
-        "/stats — Yangi like va commentlarni ko‘rish\n"
-        "/setpost — Yangi post linkini o‘zgartirish")
+        "👋 Ishxona Instagram Statistikasi Boti\n\n"
+        "/stats — Like va Comment userlarini ko'rish\n"
+        "/setpost — Yangi post havolasini yuborish")
 
 @bot.message_handler(commands=['setpost'])
 def set_post(message):
@@ -72,65 +49,57 @@ def set_post(message):
         CURRENT_POST_URL = url
         bot.reply_to(message, f"✅ Post yangilandi:\n{CURRENT_POST_URL}")
     except:
-        bot.reply_to(message, "❌ Foydalanish: /setpost https://www.instagram.com/p/....")
+        bot.reply_to(message, "❌ /setpost https://www.instagram.com/p/....")
 
 @bot.message_handler(commands=['stats'])
 def show_stats(message):
-    chat_id = message.chat.id
-    status_msg = bot.send_message(chat_id, "⏳ Instagramdan ma'lumot yuklanmoqda... Iltimos biroz kutib turing.")
+    if not CURRENT_POST_URL:
+        bot.reply_to(message, "❌ Avval /setpost orqali post/video havolasini yuboring!")
+        return
+
+    status = bot.send_message(message.chat.id, "⏳ Ma'lumot yuklanmoqda... Iltimos kuting.")
 
     try:
-        # Post linkdan media_pk olish
         media_pk = cl.media_pk_from_url(CURRENT_POST_URL)
         media = cl.media_info(media_pk).dict()
 
         # Like bosganlar
-        current_likers = {user.username for user in cl.media_likers(media_pk)}
-        new_likers = current_likers - tracking_data["likers"]
+        likers = cl.media_likers(media_pk)
+        liker_usernames = [user.username for user in likers]
 
-        # Commentlar
-        comments = cl.media_comments(media_pk, amount=250)
-        current_comments = defaultdict(list)
+        # Comment yozganlar
+        comments = cl.media_comments(media_pk, amount=300)
+        comment_counter = Counter()
+        comment_details = []
+
         for c in comments:
-            current_comments[c.user.username].append(c.text)
+            username = c.user.username
+            comment_counter[username] += 1
+            comment_details.append((username, c.text))
 
-        # Yangi commentlar
-        new_comments = []
-        for user, texts in current_comments.items():
-            old_texts = tracking_data["comments"].get(user, [])
-            for text in texts:
-                if text not in old_texts:
-                    new_comments.append((user, text))
+        # Natija
+        text = f"📊 <b>VIDEO / POST STATISTIKASI</b>\n\n"
+        text += f"❤️ Jami Like: <b>{len(likers)} ta</b>\n"
+        text += f"💬 Jami Comment: <b>{len(comments)} ta</b>\n"
+        text += f"👥 Comment yozgan odamlar: <b>{len(comment_counter)} ta</b>\n\n"
 
-        # Natija matni
-        text = f"📊 <b>Post Statistikasi</b>\n\n"
-        text += f"❤️ Like: <b>{media['like_count']}</b>\n"
-        text += f"💬 Comment: <b>{media['comment_count']}</b>\n\n"
+        # Like bosgan userlar
+        text += f"<b>❤️ Like bosgan userlar ({len(likers)} ta):</b>\n"
+        for i, user in enumerate(liker_usernames[:25], 1):   # Birinchi 25 tasini chiqaradi
+            text += f"{i}. @{user}\n"
+        if len(liker_usernames) > 25:
+            text += f"... va yana {len(liker_usernames)-25} ta\n"
 
-        if new_likers:
-            text += f"<b>🆕 Yangi Like bosganlar ({len(new_likers)} ta):</b>\n"
-            for user in list(new_likers)[:20]:
-                text += f"❤️ @{user}\n"
-        else:
-            text += "🟢 Yangi like yo‘q\n"
+        # Eng faol comment userlar
+        text += f"\n<b>🔥 Eng ko'p comment yozganlar:</b>\n"
+        for i, (user, count) in enumerate(comment_counter.most_common(15), 1):
+            text += f"{i}. @{user} — {count} ta\n"
 
-        if new_comments:
-            text += f"\n<b>🆕 Yangi Commentlar:</b>\n"
-            for user, comm in new_comments[:12]:
-                text += f"💬 <b>@{user}</b>: {comm[:65]}{'...' if len(comm) > 65 else ''}\n"
-        else:
-            text += "\n🟢 Yangi comment yo‘q\n"
-
-        bot.edit_message_text(text, chat_id, status_msg.message_id, parse_mode='HTML')
-
-        # Ma'lumotni yangilash
-        tracking_data["likers"] = current_likers
-        tracking_data["comments"] = current_comments
-        save_tracking()
+        bot.edit_message_text(text, message.chat.id, status.message_id, parse_mode='HTML')
 
     except Exception as e:
-        bot.edit_message_text(f"❌ Xatolik: {str(e)}\n\n/setpost orqali post linkini qayta qo‘ying.", 
-                             chat_id, status_msg.message_id)
+        bot.edit_message_text(f"❌ Xatolik: {str(e)}\nPost linkini tekshirib /setpost qiling.", 
+                             message.chat.id, status.message_id)
 
-print("🤖 Telegram bot muvaffaqiyatli ishga tushdi...")
+print("🤖 Bot muvaffaqiyatli ishga tushdi...")
 bot.infinity_polling()
